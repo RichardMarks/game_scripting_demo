@@ -11,7 +11,7 @@ LIBRARY_LINKER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image --libs)
 # production
 # PREPROC_DEFINES ?= -DNDEBUG
 # dev
-PREPROC_DEFINES ?= -DDEBUG
+PREPROC_DEFINES ?= -DDEBUG -DUSE_SDL_BACKEND
 
 COPY_RESOURCES ?= rsync -rvui --progress
 MKDIR_P ?= mkdir -p

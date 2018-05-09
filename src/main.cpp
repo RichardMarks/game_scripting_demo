@@ -6,7 +6,9 @@
 #include <map>
 #include <algorithm>
 
-#include <SDL2/SDL.h>
+#ifdef USE_SDL_BACKEND
+#include "SDLBackend.hpp"
+#endif
 
 #include "lua/lua.hpp"
 
@@ -176,8 +178,7 @@ struct Configuration {
 struct SharedContext {
   static SharedContext* instance;
   Configuration* config;
-  SDL_Renderer* renderer;
-  SDL_Window* window;
+  Backend* backend;
   lua_State* script;
 };
 
@@ -216,11 +217,13 @@ Game::Game() {
   Configuration config;
 
   context.config = &config;
-  context.renderer = nullptr;
-  context.window = nullptr;
+  #ifdef USE_SDL_BACKEND
+  context.backend = new SDLBackend();
+  #endif
   context.script = luaL_newstate();
 
   SharedContext::instance = &context;
+  Backend& backend = *context.backend;
 
   // provide standard libraries to script
   luaL_openlibs(context.script);
@@ -248,7 +251,7 @@ Game::Game() {
   // run the game script
   if (lua_pcall(context.script, 0, 0, 0)) {
     std::stringstream msg;
-    msg << "Error in game.lua:" << std::endl << std::string(lua_tostring(context.script, -1)) << std::endl;
+    msg << "Error in game.lua: " << std::endl << std::string(lua_tostring(context.script, -1)) << std::endl;
     lua_close(context.script);
     context.script = nullptr;
     throw std::runtime_error(msg.str());
@@ -259,85 +262,45 @@ Game::Game() {
     config.print();
   }
 
-  if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-    std::stringstream msg;
-    msg << "Error occurred in init_game()\nUnable to initialize SDL2: " << SDL_GetError() << std::endl;
-    throw std::runtime_error(msg.str());
-  }
-
-  if (config.debugMode) {
-    std::cout << "Creating Window [" << config.screenWidth << "x" << config.screenHeight << "] " << (config.useFullscreen ? "FULLSCREEN" : "WINDOWED") << std::endl;
-  }
-
-  context.window = SDL_CreateWindow(
-    config.windowTitle.c_str(),
-    SDL_WINDOWPOS_UNDEFINED,
-    SDL_WINDOWPOS_UNDEFINED,
+  backend.init();
+  backend.createWindow(
     config.screenWidth,
     config.screenHeight,
-    config.useFullscreen ? SDL_WINDOW_FULLSCREEN : (SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE)
+    config.useFullscreen,
+    config.windowTitle
   );
-
-  if (!context.window) {
-    std::stringstream msg;
-    msg << "Error occurred in init_game()\nUnable to create the main window: " << SDL_GetError() << std::endl;
-    throw std::runtime_error(msg.str());
-  }
-
-  context.renderer = SDL_CreateRenderer(
-    context.window,
-    -1,
-    SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_TARGETTEXTURE
-  );
-
-  if (!context.renderer) {
-    std::stringstream msg;
-    msg << "Error occurred in init_game()\nUnable to create the main renderer:" << SDL_GetError() << std::endl;
-    throw std::runtime_error(msg.str());
-  }
-
-  SDL_RenderSetLogicalSize(context.renderer, config.screenWidth, config.screenHeight);
 
   create();
   isRunning = true;
-  float lastTime = static_cast<float>(SDL_GetTicks() * 0.001f);
+  float lastTime = backend.getTimestamp();
   float newTime = 0;
   float deltaTime = 0.0f;
-  SDL_Event sdlEvent;
   while (isRunning) {
-    newTime = static_cast<float>(SDL_GetTicks() * 0.001f);
+    newTime = backend.getTimestamp();
     if (newTime - lastTime < 1) {
       deltaTime = (newTime - lastTime);
+      backend.preFrameUpdate(deltaTime);
       update(deltaTime);
+      backend.postFrameUpdate(deltaTime);
     }
     lastTime = newTime;
+    backend.preFrameRender();
     render();
-    while (SDL_PollEvent(&sdlEvent)) {
-      switch (sdlEvent.type) {
-        case SDL_QUIT: {
-          isRunning = false;
-        } break;
-
-        case SDL_KEYDOWN: {
-          switch (sdlEvent.key.keysym.scancode) {
-            case SDL_SCANCODE_ESCAPE: {
-              isRunning = false;
-            } break;
-            default: break;
-          }
-        } break;
-
-        default: break;
-      }
+    backend.postFrameRender();
+    if (!backend.processEvents()) {
+      isRunning = false;
     }
   }
 }
 
 Game::~Game() {
   destroy();
-  SDL_DestroyRenderer(context.renderer);
-  SDL_DestroyWindow(context.window);
-  SDL_Quit();
+
+  if (context.backend != nullptr) {
+    context.backend->shutdown();
+    delete context.backend;
+    context.backend = nullptr;
+  }
 
   if (context.script != nullptr) {
     lua_close(context.script);
@@ -395,13 +358,6 @@ void Game::render() {
     std::cout << "Game::render(" << std::endl;
   }
 
-  // screen will becleared to black
-  SDL_SetRenderDrawColor(context.renderer, 0x00, 0x00, 0x00, 0xFF);
-  SDL_RenderClear(context.renderer);
-
-  // things drawn on the screen will be white
-  SDL_SetRenderDrawColor(context.renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-
   // std::cout << "Game::render()" << std::endl;
   lua_getglobal(context.script, context.config->userRenderFunctionName.c_str());
   // stack: [.., function?]
@@ -409,8 +365,6 @@ void Game::render() {
     lua_pcall(context.script, 0, 0, 0);
     // stack: [..]
   } else { lua_pop(context.script, 1); }
-
-  SDL_RenderPresent(context.renderer);
 }
 
 int main(int argc, char* argv[]) {
@@ -431,62 +385,18 @@ namespace engine {
 
   int getScreenWidth() {
     int width = 0;
-    SDL_GetWindowSize(SharedContext::instance->window, &width, 0);
+    SharedContext::instance->backend->getWindowSize(&width, 0);
     return width;
   }
 
   int getScreenHeight() {
     int height = 0;
-    SDL_GetWindowSize(SharedContext::instance->window, 0, &height);
+    SharedContext::instance->backend->getWindowSize(0, &height);
     return height;
   }
 
   void drawCircle(int x, int y, int radius) {
-    // for simplicity, the "circle" will be a rectangle
-    // TODO: update this later to actually render a circle shape
-    // SDL_Rect dst;
-    // dst.x = x - radius;
-    // dst.y = y - radius;
-    // dst.w = radius * 2;
-    // dst.h = radius * 2;
-    // SDL_RenderDrawRect(SharedContext::instance->renderer, &dst);
-
-    int px = radius - 1;
-    int py = 0;
-    int tx = 1;
-    int ty = 1;
-    int err = tx - (radius << 1);
-    SDL_Renderer* renderer = SharedContext::instance->renderer;
-    while (px >= py) {
-      // wireframe circle
-      // SDL_RenderDrawPoint(renderer, x + px, y - py);
-      // SDL_RenderDrawPoint(renderer, x + px, y + py);
-      // SDL_RenderDrawPoint(renderer, x - px, y - py);
-      // SDL_RenderDrawPoint(renderer, x - px, y + py);
-      // SDL_RenderDrawPoint(renderer, x + py, y - px);
-      // SDL_RenderDrawPoint(renderer, x + py, y + px);
-      // SDL_RenderDrawPoint(renderer, x - py, y - px);
-      // SDL_RenderDrawPoint(renderer, x - py, y + px);
-      // filled circle
-      SDL_RenderDrawLine(renderer, x, y, x + px, y - py);
-      SDL_RenderDrawLine(renderer, x, y, x + px, y + py);
-      SDL_RenderDrawLine(renderer, x, y, x - px, y - py);
-      SDL_RenderDrawLine(renderer, x, y, x - px, y + py);
-      SDL_RenderDrawLine(renderer, x, y, x + py, y - px);
-      SDL_RenderDrawLine(renderer, x, y, x + py, y + px);
-      SDL_RenderDrawLine(renderer, x, y, x - py, y - px);
-      SDL_RenderDrawLine(renderer, x, y, x - py, y + px);
-
-      if (err <= 0) {
-        py += 1;
-        err += ty;
-        ty += 2;
-      } else if (err > 0) {
-        px -= 1;
-        tx += 2;
-        err += tx - (radius << 1);
-      }
-    }
+    SharedContext::instance->backend->drawCircle(x, y, radius);
   }
 
   int apiInit(lua_State* L) {
