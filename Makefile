@@ -5,13 +5,13 @@ BUILD_DIR ?= ./build
 SOURCE_DIRS ?= ./src
 RESOURCES_DIR ?= ./resources
 
-LIBRARY_COMPILER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image --cflags)
-LIBRARY_LINKER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image --libs)
+LIBRARY_COMPILER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image ruby-2.5 --cflags)
+LIBRARY_LINKER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image ruby-2.5 --libs)
 
 # production
 # PREPROC_DEFINES ?= -DNDEBUG
 # dev
-PREPROC_DEFINES ?= -DDEBUG
+PREPROC_DEFINES ?= -DDEBUG -DUSE_SDL_BACKEND
 
 COPY_RESOURCES ?= rsync -rvui --progress
 MKDIR_P ?= mkdir -p
