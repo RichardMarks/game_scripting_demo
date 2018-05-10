@@ -14,6 +14,7 @@
 #include "Configuration.hpp"
 
 #include "LuaScriptingEngine.hpp"
+#include "RubyScriptingEngine.hpp"
 
 class Game {
   public:
@@ -24,6 +25,7 @@ class Game {
     void update(float deltaTime);
     void render();
 
+    Configuration config;
     SharedContext context;
     bool isRunning;
 };
@@ -31,8 +33,6 @@ class Game {
 Game::Game(std::string const& mainScriptFile) {
   // initialize the shared context
   SharedContext::instance = &context;
-  Configuration config;
-
   context.config = &config;
   #ifdef USE_SDL_BACKEND
   context.backend = new SDLBackend();
@@ -42,6 +42,8 @@ Game::Game(std::string const& mainScriptFile) {
 
   if (scriptExtention == "lua") {
     context.scripting = new LuaScriptingEngine();
+  } else if (scriptExtention == "rb") {
+    context.scripting = new RubyScriptingEngine();
   } else {
     std::stringstream msg;
     msg << "Unsupported script [" << scriptExtention << "] : " << mainScriptFile << std::endl;
