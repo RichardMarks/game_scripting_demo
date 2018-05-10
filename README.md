@@ -1,9 +1,9 @@
-# Lua Scripting Game Demo
+# Game Scripting Demo
 
 ## Quickstart
 
 ```
-$ git clone https://github.com/RichardMarks/lua_scripting_game_demo.git demo
+$ git clone https://github.com/RichardMarks/game_scripting_demo.git demo
 $ cd demo
 $ make
 $ cd ./bin
