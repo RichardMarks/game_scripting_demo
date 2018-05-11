@@ -15,10 +15,11 @@
 
 #include "LuaScriptingEngine.hpp"
 #include "RubyScriptingEngine.hpp"
+#include "PythonScriptingEngine.hpp"
 
 class Game {
   public:
-    Game(std::string const& mainScriptFile);
+    Game(std::string const& programName, std::string const& mainScriptFile);
     ~Game();
     void create();
     void destroy();
@@ -30,7 +31,7 @@ class Game {
     bool isRunning;
 };
 
-Game::Game(std::string const& mainScriptFile) {
+Game::Game(std::string const& programName, std::string const& mainScriptFile) {
   // initialize the shared context
   SharedContext::instance = &context;
   context.config = &config;
@@ -44,6 +45,8 @@ Game::Game(std::string const& mainScriptFile) {
     context.scripting = new LuaScriptingEngine();
   } else if (scriptExtention == "rb") {
     context.scripting = new RubyScriptingEngine();
+  } else if (scriptExtention == "py") {
+    context.scripting = new PythonScriptingEngine(programName);
   } else {
     std::stringstream msg;
     msg << "Unsupported script [" << scriptExtention << "] : " << mainScriptFile << std::endl;
@@ -149,7 +152,7 @@ int main(int argc, char* argv[]) {
   }
 
   try {
-    Game game(mainScriptFile);
+    Game game(std::string(argv[0]), mainScriptFile);
   } catch(const std::exception& ex) {
     std::cerr << "Runtime Error: " << ex.what() << std::endl;
     return EXIT_FAILURE;
