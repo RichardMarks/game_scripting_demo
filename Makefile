@@ -5,8 +5,8 @@ BUILD_DIR ?= ./build
 SOURCE_DIRS ?= ./src
 RESOURCES_DIR ?= ./resources
 
-LIBRARY_COMPILER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image ruby-2.5 --cflags)
-LIBRARY_LINKER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image ruby-2.5 --libs)
+LIBRARY_COMPILER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image ruby-2.5 python-3.6 --cflags)
+LIBRARY_LINKER_FLAGS ?= $(shell pkg-config sdl2 sdl2_ttf sdl2_image ruby-2.5 python-3.6 --libs)
 
 # production
 # PREPROC_DEFINES ?= -DNDEBUG
